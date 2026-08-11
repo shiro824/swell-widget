@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>うねりライン</title>
+<style>
+  :root{
+    --ink:#0d1f2b;
+    --foam:#eef4f5;
+    --sand:#cbb894;
+    --swell:#4fb3bf;
+    --offshore:#f0a24b;
+    --mute:#7d97a3;
+    --hair:rgba(238,244,245,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--ink)}
+  body{
+    padding:20px 20px 24px;
+    color:var(--foam);
+    font-family:"Hiragino Sans","Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* スポット切替 */
+  nav{
+    display:flex;gap:6px;overflow-x:auto;
+    margin:0 -20px 16px;padding:0 20px 8px;
+    scrollbar-width:none;
+  }
+  nav::-webkit-scrollbar{display:none}
+  nav button{
+    flex:0 0 auto;
+    background:none;border:1px solid var(--hair);border-radius:999px;
+    color:var(--mute);font:inherit;font-size:12px;letter-spacing:.06em;
+    padding:5px 13px;cursor:pointer;white-space:nowrap;
+    transition:.15s;
+  }
+  nav button:hover{color:var(--foam);border-color:rgba(238,244,245,.3)}
+  nav button[aria-current="true"]{
+    background:var(--foam);border-color:var(--foam);color:var(--ink);font-weight:600;
+  }
+
+  .eyebrow{
+    font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--mute);margin:0 0 6px;
+  }
+  h1{margin:0;font-size:30px;font-weight:600;letter-spacing:.04em;line-height:1.1}
+  h1 .geo{font-size:11px;color:var(--mute);letter-spacing:.1em;margin-left:10px;font-weight:400}
+
+  .now{
+    display:flex;gap:26px;align-items:baseline;flex-wrap:wrap;
+    margin:18px 0 4px;padding-bottom:16px;border-bottom:1px solid var(--hair);
+  }
+  .metric .v{font-size:26px;font-weight:600;letter-spacing:.02em}
+  .metric .v small{font-size:12px;font-weight:400;color:var(--mute);margin-left:3px}
+  .metric .k{font-size:10px;letter-spacing:.16em;color:var(--mute);margin-top:2px}
+  .metric.off .v{color:var(--offshore)}
+
+  .day{margin-top:22px}
+  .day-label{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:11px;letter-spacing:.16em;color:var(--sand);margin-bottom:2px;
+  }
+  .day-label span{color:var(--mute);letter-spacing:.08em}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+
+  .msg{padding:26px 0;color:var(--mute);font-size:13px;line-height:1.8}
+  .msg b{color:var(--foam);font-weight:600}
+
+  footer{
+    margin-top:22px;padding-top:12px;border-top:1px solid var(--hair);
+    font-size:10px;letter-spacing:.08em;color:var(--mute);
+    display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  }
+  .key{display:flex;gap:14px;align-items:center}
+  .key i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+  @media (max-width:420px){
+    body{padding:16px 14px 20px}
+    nav{margin:0 -14px 14px;padding:0 14px 8px}
+    h1{font-size:23px}
+    h1 .geo{display:block;margin:4px 0 0}
+    .now{gap:18px}
+    .metric .v{font-size:21px}
+  }
+</style>
+</head>
+<body>
+
+<nav id="tabs" aria-label="スポット"></nav>
+
+<p class="eyebrow">Open-Meteo Marine / 3日間</p>
+<h1 id="spotName">—<span class="geo" id="geo"></span></h1>
+<div id="now" class="now" hidden></div>
+<div id="body" class="msg">うねりデータを取得しています…</div>
+
+<footer>
+  <div class="key">
+    <span><i style="background:var(--swell)"></i>波高</span>
+    <span><i style="background:var(--offshore)"></i>オフショア</span>
+    <span><i style="background:var(--mute)"></i>オン・サイド</span>
+  </div>
+  <div id="stamp"></div>
+</footer>
+
+<script>
+/* ------------------------------------------------------------------
+   スポット定義
+   off … オフショアと見なす風向の中心角（度）。±ARC で判定する。
+         千葉北（九十九里）は南東オンショア → オフショアは北西寄り。
+         鹿嶋・トップサンテは南南西がオフショア〜サイドオフ。
+------------------------------------------------------------------ */
+const ARC = 45;
+const SPOTS = [
+  { id:"torami",  name:"東浪見",       lat:35.365, lon:140.405, off:300 },
+  { id:"katakai", name:"片貝新堤",     lat:35.516, lon:140.445, off:300 },
+  { id:"sakuda",  name:"作田",         lat:35.585, lon:140.487, off:300 },
+  { id:"shiina",  name:"椎名内",       lat:35.635, lon:140.553, off:305 },
+  { id:"iioka",   name:"飯岡",         lat:35.703, lon:140.725, off:320 },
+  { id:"hirai",   name:"鹿嶋平井",     lat:35.948, lon:140.680, off:200 },
+  { id:"sante",   name:"トップサンテ", lat:35.885, lon:140.700, off:210 },
+];
+
+const DIRS = ["北","北北東","北東","東北東","東","東南東","南東","南南東",
+              "南","南南西","南西","西南西","西","西北西","北西","北北西"];
+const compass = d => DIRS[Math.round(d / 22.5) % 16];
+
+/* 円周上の角度差（0〜180） */
+const gap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+const $ = id => document.getElementById(id);
+
+/* ---------- スポットタブ ---------- */
+let current = SPOTS.find(s => s.id === location.hash.slice(1)) || SPOTS[0];
+
+$("tabs").innerHTML = SPOTS.map(s =>
+  `<button data-id="${s.id}" aria-current="${s.id === current.id}">${s.name}</button>`
+).join("");
+
+$("tabs").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  current = SPOTS.find(s => s.id === btn.dataset.id);
+  history.replaceState(null, "", "#" + current.id);
+  [...$("tabs").children].forEach(b =>
+    b.setAttribute("aria-current", b.dataset.id === current.id));
+  render();
+});
+
+/* ---------- データ取得 ---------- */
+const cache = new Map();
+
+async function grab(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+async function fetchSpot(spot){
+  if (cache.has(spot.id)) return cache.get(spot.id);
+
+  const q = `latitude=${spot.lat}&longitude=${spot.lon}&timezone=Asia%2FTokyo&forecast_days=3`;
+  const [sea, air] = await Promise.all([
+    grab(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height,wave_period`),
+    grab(`https://api.open-meteo.com/v1/forecast?${q}&hourly=wind_speed_10m,wind_direction_10m`)
+  ]);
+
+  const rows = sea.hourly.time.map((t, i) => ({
+    t : new Date(t),
+    h : sea.hourly.wave_height[i],
+    p : sea.hourly.wave_period[i],
+    ws: air.hourly.wind_speed_10m[i],
+    wd: air.hourly.wind_direction_10m[i]
+  })).filter(r => r.h != null);
+
+  if (!rows.length) throw new Error("データが空です");
+  cache.set(spot.id, rows);
+  return rows;
+}
+
+/* ---------- 描画 ---------- */
+async function render(){
+  const spot = current;
+  $("spotName").firstChild.nodeValue = spot.name;
+  $("geo").textContent = `${spot.lat.toFixed(2)}N ${spot.lon.toFixed(2)}E`;
+  $("now").hidden = true;
+  $("body").className = "msg";
+  $("body").textContent = "うねりデータを取得しています…";
+
+  let rows;
+  try {
+    rows = await fetchSpot(spot);
+  } catch (e) {
+    $("body").innerHTML =
+      `<b>データを読み込めませんでした。</b><br>${e.message}<br>
+       通信環境を確認して再読み込みしてください。`;
+    return;
+  }
+  if (spot !== current) return;   // 取得中にタブが切り替わった場合
+
+  const isOff = d => gap(d, spot.off) <= ARC;
+
+  /* 現況 */
+  const now = new Date();
+  const cur = rows.reduce((a, b) => Math.abs(b.t - now) < Math.abs(a.t - now) ? b : a);
+  $("now").innerHTML = `
+    <div class="metric"><div class="v">${cur.h.toFixed(1)}<small>m</small></div><div class="k">波高</div></div>
+    <div class="metric"><div class="v">${cur.p == null ? "—" : cur.p.toFixed(0)}<small>秒</small></div><div class="k">周期</div></div>
+    <div class="metric ${isOff(cur.wd) ? "off" : ""}">
+      <div class="v">${compass(cur.wd)}<small>${cur.ws.toFixed(0)}m/s</small></div>
+      <div class="k">${isOff(cur.wd) ? "オフショア" : "オン・サイド"}</div>
+    </div>`;
+  $("now").hidden = false;
+
+  /* 日別グラフ */
+  const max  = Math.max(1.2, Math.ceil(Math.max(...rows.map(r => r.h)) * 2) / 2);
+  const days = {};
+  rows.forEach(r => (days[r.t.toDateString()] ||= []).push(r));
+
+  $("body").className = "";
+  $("body").innerHTML = Object.values(days).map(d => chart(d, max, isOff)).join("");
+
+  $("stamp").textContent = "更新 " +
+    now.toLocaleString("ja-JP", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+
+function chart(day, max, isOff){
+  const W = 720, H = 150, PAD = 26, base = H - 34;
+  const x = i => PAD + i * (W - PAD * 2) / (day.length - 1 || 1);
+  const y = h => base - (h / max) * (base - 12);
+
+  const line = day.map((r, i) => `${x(i).toFixed(1)},${y(r.h).toFixed(1)}`).join(" ");
+  const area = `${PAD},${base} ${line} ${x(day.length - 1).toFixed(1)},${base}`;
+
+  /* 3時間おきに風向の矢羽根（風の吹いていく向き） */
+  const arrows = day.map((r, i) => {
+    if (r.t.getHours() % 3) return "";
+    const c = isOff(r.wd) ? "var(--offshore)" : "var(--mute)";
+    return `<g transform="translate(${x(i).toFixed(1)},${base + 13}) rotate(${(r.wd + 180) % 360})">
+      <path d="M0,-5 L0,5 M0,5 L-2.6,1.4 M0,5 L2.6,1.4" stroke="${c}" stroke-width="1.4"
+        fill="none" stroke-linecap="round"/></g>`;
+  }).join("");
+
+  const ticks = day.map((r, i) =>
+    r.t.getHours() % 6 ? "" :
+    `<text x="${x(i).toFixed(1)}" y="${H - 3}" fill="var(--mute)" font-size="9"
+       text-anchor="middle" letter-spacing=".06em">${r.t.getHours()}</text>`
+  ).join("");
+
+  /* 早朝〜午前のセッション帯 */
+  const dawn = day.findIndex(r => r.t.getHours() === 5);
+  const noon = day.findIndex(r => r.t.getHours() === 11);
+  const band = dawn > -1 && noon > -1
+    ? `<rect x="${x(dawn).toFixed(1)}" y="8" width="${(x(noon) - x(dawn)).toFixed(1)}"
+        height="${base - 8}" fill="var(--sand)" opacity=".07"/>` : "";
+
+  const d    = day[0].t;
+  const wd   = ["日","月","火","水","木","金","土"][d.getDay()];
+  const peak = Math.max(...day.map(r => r.h));
+
+  return `<div class="day">
+    <div class="day-label">${d.getMonth() + 1}月${d.getDate()}日（${wd}）<span>最大 ${peak.toFixed(1)}m</span></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${d.getMonth() + 1}月${d.getDate()}日の波高推移">
+      ${band}
+      <line x1="${PAD}" y1="${base}" x2="${W - PAD}" y2="${base}" stroke="rgba(238,244,245,.18)"/>
+      <polygon points="${area}" fill="var(--swell)" opacity=".16"/>
+      <polyline points="${line}" fill="none" stroke="var(--swell)" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round"/>
+      ${arrows}${ticks}
+      <text x="${PAD}" y="16" fill="var(--mute)" font-size="9" letter-spacing=".06em">${max}m</text>
+    </svg>
+  </div>`;
+}
+
+render();
+</script>
+</body>
+</html>
