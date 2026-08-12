@@ -13,6 +13,7 @@
     --wind:#94a8b3;
     --offshore:#f2a94e;
     --good:#7fd499;
+    --tide:#9d8cc4;
     --mute:#8199a5;
     --hair:rgba(243,247,248,.12);
   }
@@ -45,14 +46,8 @@
   }
 
   .eyebrow{
-    display:flex;justify-content:space-between;align-items:baseline;gap:10px;
     font-size:10px;letter-spacing:.2em;text-transform:uppercase;
     color:var(--mute);margin:0 0 6px;
-  }
-  .eyebrow button{
-    background:none;border:none;color:var(--mute);font:inherit;letter-spacing:.1em;
-    cursor:pointer;text-decoration:underline;text-underline-offset:2px;
-    padding:0;text-transform:none;
   }
   h1{margin:0;font-size:30px;font-weight:600;letter-spacing:.04em;line-height:1.1}
   h1 .geo{font-size:11px;color:var(--mute);letter-spacing:.1em;margin-left:10px;font-weight:400}
@@ -65,6 +60,7 @@
   .metric .v small{font-size:12px;font-weight:400;color:var(--mute);margin-left:3px}
   .metric .k{font-size:10px;letter-spacing:.16em;color:var(--mute);margin-top:2px}
   .metric.off .v{color:var(--offshore)}
+  .metric.tide .v{color:var(--tide);font-size:22px}
 
   .day{margin-top:24px}
   .day-head{
@@ -85,14 +81,13 @@
   .msg{padding:26px 0;color:var(--mute);font-size:13px;line-height:1.8}
   .msg b{color:var(--foam);font-weight:600}
 
-  .tide-box{
-    margin-top:22px;padding:14px 16px;border:1px dashed var(--hair);border-radius:10px;
-    font-size:11.5px;line-height:1.9;color:var(--mute);
+  .note{
+    margin-top:20px;padding:12px 15px;border:1px dashed var(--hair);border-radius:10px;
+    font-size:11px;line-height:1.85;color:var(--mute);
   }
-  .tide-box b{color:var(--foam)}
 
   footer{
-    margin-top:22px;padding-top:12px;border-top:1px solid var(--hair);
+    margin-top:20px;padding-top:12px;border-top:1px solid var(--hair);
     font-size:10px;letter-spacing:.08em;color:var(--mute);
     display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
   }
@@ -106,6 +101,7 @@
     h1 .geo{display:block;margin:4px 0 0}
     .now{gap:18px}
     .metric .v{font-size:22px}
+    .metric.tide .v{font-size:18px}
   }
 </style>
 </head>
@@ -113,20 +109,18 @@
 
 <nav id="tabs" aria-label="スポット"></nav>
 
-<div class="eyebrow">
-  <span>Open-Meteo Marine / <span id="rangeLabel">5日間</span></span>
-  <button id="tideToggle" type="button" hidden>潮位設定</button>
-</div>
+<p class="eyebrow">Open-Meteo Marine / <span id="rangeLabel">5日間</span></p>
 <h1 id="spotName">—<span class="geo" id="geo"></span></h1>
 <div id="now" class="now" hidden></div>
 <div id="body" class="msg">うねりデータを取得しています…</div>
-<div id="tideBox"></div>
+<div id="note"></div>
 
 <footer>
   <div class="key">
     <span><i style="background:var(--swell)"></i>波高</span>
     <span><i style="background:var(--offshore)"></i>オフショア風</span>
     <span><i style="background:var(--wind)"></i>オン・サイド風</span>
+    <span><i style="background:var(--tide)"></i>潮位</span>
     <span><i style="background:var(--good)"></i>おすすめ時間帯</span>
   </div>
   <div id="stamp"></div>
@@ -135,20 +129,17 @@
 <script>
 /* ------------------------------------------------------------------
    スポット定義
-   off  … オフショアと見なす風向の中心角（度）。±ARC で判定する。
-   tide … { pc, hc } 潮位API（tide736.net）の都道府県コード／港コード。
-          未設定（null）なら潮位セクションは自動的に非表示になる。
-          設定方法は同梱の README を参照。
+   off … オフショアと見なす風向の中心角（度）。±ARC で判定する。
 ------------------------------------------------------------------ */
 const ARC = 45;
 const SPOTS = [
-  { id:"torami",  name:"東浪見",       lat:35.365, lon:140.405, off:300, tide:{ pc:12, hc:null } },
-  { id:"katakai", name:"片貝新堤",     lat:35.516, lon:140.445, off:300, tide:{ pc:12, hc:null } },
-  { id:"sakuda",  name:"作田",         lat:35.585, lon:140.487, off:300, tide:{ pc:12, hc:null } },
-  { id:"shiina",  name:"椎名内",       lat:35.635, lon:140.553, off:305, tide:{ pc:12, hc:null } },
-  { id:"iioka",   name:"飯岡",         lat:35.703, lon:140.725, off:320, tide:{ pc:12, hc:null } },
-  { id:"hirai",   name:"鹿嶋平井",     lat:35.948, lon:140.680, off:200, tide:{ pc:8,  hc:null } },
-  { id:"sante",   name:"トップサンテ", lat:35.885, lon:140.700, off:210, tide:{ pc:8,  hc:null } },
+  { id:"torami",  name:"東浪見",       lat:35.365, lon:140.405, off:300 },
+  { id:"katakai", name:"片貝新堤",     lat:35.516, lon:140.445, off:300 },
+  { id:"sakuda",  name:"作田",         lat:35.585, lon:140.487, off:300 },
+  { id:"shiina",  name:"椎名内",       lat:35.635, lon:140.553, off:305 },
+  { id:"iioka",   name:"飯岡",         lat:35.703, lon:140.725, off:320 },
+  { id:"hirai",   name:"鹿嶋平井",     lat:35.948, lon:140.680, off:200 },
+  { id:"sante",   name:"トップサンテ", lat:35.885, lon:140.700, off:210 },
 ];
 
 const FORECAST_DAYS = 5;
@@ -159,6 +150,7 @@ const DIRS = ["北","北北東","北東","東北東","東","東南東","南東",
               "南","南南西","南西","西南西","西","西北西","北西","北北西"];
 const compass = d => DIRS[Math.round(d / 22.5) % 16];
 const gap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+const hhmm = t => String(t.getHours()).padStart(2,"0") + ":" + String(t.getMinutes()).padStart(2,"0");
 const $ = id => document.getElementById(id);
 
 /* ---------- スポットタブ ---------- */
@@ -182,7 +174,6 @@ $("rangeLabel").textContent = FORECAST_DAYS + "日間";
 
 /* ---------- データ取得 ---------- */
 const cache = new Map();
-const tideCache = new Map();
 
 async function grab(url){
   const r = await fetch(url);
@@ -194,37 +185,22 @@ async function fetchSpot(spot){
   if (cache.has(spot.id)) return cache.get(spot.id);
   const q = `latitude=${spot.lat}&longitude=${spot.lon}&timezone=Asia%2FTokyo&forecast_days=${FORECAST_DAYS}`;
   const [sea, air] = await Promise.all([
-    grab(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height,wave_period`),
+    grab(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height,wave_period,sea_level_height_msl`),
     grab(`https://api.open-meteo.com/v1/forecast?${q}&hourly=wind_speed_10m,wind_direction_10m`)
   ]);
+  const lvl = sea.hourly.sea_level_height_msl || [];
   const rows = sea.hourly.time.map((t, i) => ({
     t : new Date(t),
     h : sea.hourly.wave_height[i],
     p : sea.hourly.wave_period[i],
+    sl: lvl[i] ?? null,
     ws: air.hourly.wind_speed_10m[i],
     wd: air.hourly.wind_direction_10m[i]
   })).filter(r => r.h != null);
   if (!rows.length) throw new Error("データが空です");
+  rows.forEach((r, i) => r.gi = i);   // 極値マーカー参照用の通し番号
   cache.set(spot.id, rows);
   return rows;
-}
-
-/* tide736.net から今日の潮位を取得（hc未設定ならスキップ） */
-async function fetchTide(spot){
-  if (!spot.tide || !spot.tide.hc) return null;
-  const key = spot.tide.pc + ":" + spot.tide.hc;
-  if (tideCache.has(key)) return tideCache.get(key);
-  const now = new Date();
-  const url = `https://api.tide736.net/get_tide.php?pc=${spot.tide.pc}&hc=${spot.tide.hc}` +
-              `&yr=${now.getFullYear()}&mn=${now.getMonth() + 1}&dy=${now.getDate()}&rg=day`;
-  try {
-    const data = await grab(url);
-    if (data.status !== 1) throw new Error("no data");
-    tideCache.set(key, data);
-    return data;
-  } catch {
-    return null; // 港コードが誤っている等 → 静かにセクションを隠す
-  }
 }
 
 /* ---------- 描画 ---------- */
@@ -235,13 +211,7 @@ async function render(){
   $("now").hidden = true;
   $("body").className = "msg";
   $("body").textContent = "うねりデータを取得しています…";
-  $("tideBox").innerHTML = "";
-  $("tideToggle").hidden = !!(spot.tide && spot.tide.hc);
-  $("tideToggle").onclick = () => alert(
-    "潮位を表示するには index.html 内の SPOTS 配列で、このスポットの\n" +
-    "tide: { pc, hc } の hc（港コード）を設定してください。\n" +
-    "調べ方は README の「潮位を有効にする」を参照。"
-  );
+  $("note").innerHTML = "";
 
   let rows;
   try {
@@ -255,35 +225,71 @@ async function render(){
   if (spot !== current) return;
 
   const isOff = d => gap(d, spot.off) <= ARC;
+  const hasTide = rows.some(r => r.sl != null);
 
   /* 現況 */
   const now = new Date();
   const cur = rows.reduce((a, b) => Math.abs(b.t - now) < Math.abs(a.t - now) ? b : a);
+  const curIdx = rows.indexOf(cur);
+  let tideMetric = "";
+  if (hasTide && cur.sl != null) {
+    const nxt = rows[curIdx + 1];
+    const dir = nxt && nxt.sl != null ? (nxt.sl > cur.sl ? "上げ" : "下げ") : "";
+    tideMetric = `
+      <div class="metric tide">
+        <div class="v">${cur.sl >= 0 ? "+" : ""}${cur.sl.toFixed(2)}<small>m</small></div>
+        <div class="k">潮位${dir ? " ・ " + dir : ""}</div>
+      </div>`;
+  }
   $("now").innerHTML = `
     <div class="metric"><div class="v">${cur.h.toFixed(1)}<small>m</small></div><div class="k">波高</div></div>
     <div class="metric"><div class="v">${cur.p == null ? "—" : cur.p.toFixed(0)}<small>秒</small></div><div class="k">周期</div></div>
     <div class="metric ${isOff(cur.wd) ? "off" : ""}">
       <div class="v">${compass(cur.wd)}<small>${cur.ws.toFixed(0)}m/s</small></div>
       <div class="k">${isOff(cur.wd) ? "オフショア" : "オン・サイド"}</div>
-    </div>`;
+    </div>${tideMetric}`;
   $("now").hidden = false;
+
+  /* 満潮・干潮（系列全体の極値を先に検出しておく） */
+  const extrema = hasTide ? findExtrema(rows) : new Map();
 
   /* 日別グラフ */
   const maxH = Math.max(1.2, Math.ceil(Math.max(...rows.map(r => r.h)) * 2) / 2);
   const maxW = Math.max(6, Math.ceil(Math.max(...rows.map(r => r.ws))));
+  const slAll = rows.filter(r => r.sl != null).map(r => r.sl);
+  const slMin = slAll.length ? Math.min(...slAll) : 0;
+  const slMax = slAll.length ? Math.max(...slAll) : 1;
+
   const days = {};
   rows.forEach(r => (days[r.t.toDateString()] ||= []).push(r));
 
   $("body").className = "";
-  $("body").innerHTML = Object.values(days).map(d => dayBlock(d, maxH, maxW, isOff)).join("");
+  $("body").innerHTML = Object.values(days)
+    .map(d => dayBlock(d, { maxH, maxW, slMin, slMax, isOff, hasTide, extrema })).join("");
+
+  if (hasTide) {
+    $("note").innerHTML = `<div class="note">
+      潮位は Copernicus SMOC（8km解像度・全球平均海面基準）による予測値です。
+      上げ／下げのタイミングを掴む用途を想定しており、海図や気象庁潮位表の
+      cm 値とは基準面が異なるため一致しません。満潮・干潮の時刻は
+      1時間間隔データから推定しているため ±30分程度の誤差があります。
+    </div>`;
+  }
 
   $("stamp").textContent = "更新 " +
     now.toLocaleString("ja-JP", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" });
+}
 
-  /* 潮位（設定済みの場合のみ） */
-  const tide = await fetchTide(spot);
-  if (spot !== current) return;
-  if (tide) renderTide(tide);
+/* 潮位系列の極大・極小を拾う → Map<index, "満"|"干"> */
+function findExtrema(rows){
+  const m = new Map();
+  for (let i = 1; i < rows.length - 1; i++) {
+    const a = rows[i - 1].sl, b = rows[i].sl, c = rows[i + 1].sl;
+    if (a == null || b == null || c == null) continue;
+    if (b >= a && b >= c && !(a === b && b === c)) m.set(i, "満");
+    if (b <= a && b <= c && !(a === b && b === c)) m.set(i, "干");
+  }
+  return m;
 }
 
 /* その日のうち「おすすめ時間帯」を1本だけ拾う（最も長い連続区間） */
@@ -300,8 +306,9 @@ function findRecommended(day, isOff){
   return { start: bestStart, end: bestStart + bestLen - 1 };
 }
 
-function dayBlock(day, maxH, maxW, isOff){
-  const W = 720, HW = 150, HB = 44, PAD = 26;
+function dayBlock(day, o){
+  const { maxH, maxW, slMin, slMax, isOff, hasTide, extrema } = o;
+  const W = 720, HW = 150, HB = 44, HT = 52, PAD = 26;
   const baseW = HW - 34;
   const x = i => PAD + i * (W - PAD * 2) / (day.length - 1 || 1);
   const yW = h => baseW - (h / maxH) * (baseW - 12);
@@ -336,6 +343,7 @@ function dayBlock(day, maxH, maxW, isOff){
       font-size="10" text-anchor="middle" font-weight="600" font-variant-numeric="tabular-nums">${r.h.toFixed(1)}</text>`;
   }).join("");
 
+  /* 風速バー */
   const windBase = HB - 6;
   const windBars = day.map((r, i) => {
     const bw = (W - PAD * 2) / day.length * 0.55;
@@ -349,6 +357,31 @@ function dayBlock(day, maxH, maxW, isOff){
     `<text x="${x(i).toFixed(1)}" y="${HB - 1}" fill="var(--mute)" font-size="8"
        text-anchor="middle">${r.ws.toFixed(0)}</text>`
   ).join("");
+
+  /* 潮位ライン */
+  let tideSvg = "";
+  if (hasTide && day.some(r => r.sl != null)) {
+    const span = (slMax - slMin) || 1;
+    const yT = v => (HT - 16) - ((v - slMin) / span) * (HT - 30);
+    const pts = day.map((r, i) => r.sl == null ? null : `${x(i).toFixed(1)},${yT(r.sl).toFixed(1)}`)
+                   .filter(Boolean).join(" ");
+    const marks = day.map((r, i) => {
+      const kind = extrema.get(r.gi);
+      if (!kind || r.sl == null) return "";
+      const yy = yT(r.sl);
+      return `<g>
+        <circle cx="${x(i).toFixed(1)}" cy="${yy.toFixed(1)}" r="2.6" fill="var(--tide)"/>
+        <text x="${x(i).toFixed(1)}" y="${(kind === "満" ? yy - 7 : yy + 13).toFixed(1)}"
+          fill="var(--tide)" font-size="9" text-anchor="middle" font-variant-numeric="tabular-nums"
+          >${kind} ${hhmm(r.t)}</text></g>`;
+    }).join("");
+    tideSvg = `<svg viewBox="0 0 ${W} ${HT}" role="img" aria-label="潮位">
+      <polyline points="${pts}" fill="none" stroke="var(--tide)" stroke-width="1.6"
+        stroke-linejoin="round" opacity=".9"/>
+      ${marks}
+      <text x="${PAD}" y="10" fill="var(--mute)" font-size="8" letter-spacing=".05em">潮位</text>
+    </svg>`;
+  }
 
   const d    = day[0].t;
   const wd   = ["日","月","火","水","木","金","土"][d.getDay()];
@@ -371,28 +404,12 @@ function dayBlock(day, maxH, maxW, isOff){
       ${valueLabels}${ticks}
       <text x="${PAD}" y="16" fill="var(--mute)" font-size="9" letter-spacing=".05em">${maxH}m</text>
     </svg>
-    <svg viewBox="0 0 ${W} ${HB}" role="img" aria-label="${d.getMonth() + 1}月${d.getDate()}日の風速">
+    <svg viewBox="0 0 ${W} ${HB}" role="img" aria-label="風速">
       ${windBars}${windTicks}
       <text x="${PAD}" y="12" fill="var(--mute)" font-size="8" letter-spacing=".05em">m/s</text>
     </svg>
+    ${tideSvg}
   </div>`;
-}
-
-function renderTide(data){
-  const port = data.tide.port.harbor_namej;
-  const today = Object.keys(data.tide.chart)[0];
-  const c = data.tide.chart[today];
-  const moon = c.moon;
-  const events = [
-    ...c.flood.map(e => ({ ...e, label:"満潮" })),
-    ...c.edd.map(e => ({ ...e, label:"干潮" }))
-  ].sort((a, b) => a.unix - b.unix);
-
-  $("tideBox").innerHTML = `
-    <div class="tide-box">
-      <b>${port}の潮汐</b> ／ ${moon.title}（月齢 ${Number(moon.age).toFixed(1)}）<br>
-      ${events.map(e => `${e.label} ${e.time}（${Math.round(e.cm)}cm）`).join(" ・ ")}
-    </div>`;
 }
 
 render();
