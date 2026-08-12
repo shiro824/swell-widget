@@ -5,23 +5,48 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>うねりライン</title>
 <style>
+  /* ライトを既定に、Notionのダークモードでは自動で切り替わる */
   :root{
-    --ink:#0b1a24;
-    --foam:#f3f7f8;
-    --sand:#d9c39a;
-    --swell:#5fc2cc;
-    --wind:#8fa3af;
-    --offshore:#f2a94e;
-    --good:#7fd499;
-    --tide:#a493cc;
-    --mute:#7e95a1;
-    --hair:rgba(243,247,248,.1);
+    --bg:#ffffff;
+    --panel:#f7f9fa;
+    --text:#152430;
+    --mute:#6b8391;
+    --sand:#9a7f4a;
+    --swell:#1c8ea3;
+    --swell-fill:rgba(28,142,163,.11);
+    --wind:#9fb0b9;
+    --offshore:#dd8a1c;
+    --good:#2f9d63;
+    --good-band:rgba(47,157,99,.1);
+    --tide:#6f5fb0;
+    --grid:rgba(21,36,48,.13);
+    --axis:rgba(21,36,48,.28);
+    --hair:rgba(21,36,48,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1b24;
+      --panel:#152531;
+      --text:#eef4f6;
+      --mute:#8fa5b0;
+      --sand:#d9c39a;
+      --swell:#5fc2cc;
+      --swell-fill:rgba(95,194,204,.13);
+      --wind:#8fa3af;
+      --offshore:#f2a94e;
+      --good:#7fd499;
+      --good-band:rgba(127,212,153,.12);
+      --tide:#a493cc;
+      --grid:rgba(238,244,246,.16);
+      --axis:rgba(238,244,246,.3);
+      --hair:rgba(238,244,246,.12);
+    }
   }
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--ink)}
+  html,body{margin:0;background:var(--bg)}
   body{
     padding:20px 20px 24px;
-    color:var(--foam);
+    color:var(--text);
     font-family:"Hiragino Sans","Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
@@ -38,9 +63,9 @@
     color:var(--mute);font:inherit;font-size:12px;letter-spacing:.06em;
     padding:5px 13px;cursor:pointer;white-space:nowrap;transition:.15s;
   }
-  nav button:hover{color:var(--foam);border-color:rgba(243,247,248,.3)}
+  nav button:hover{color:var(--text);border-color:var(--axis)}
   nav button[aria-current="true"]{
-    background:var(--foam);border-color:var(--foam);color:var(--ink);font-weight:600;
+    background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600;
   }
 
   .eyebrow{
@@ -68,18 +93,18 @@
   .day-head .peak{color:var(--mute);letter-spacing:.05em;font-variant-numeric:tabular-nums;white-space:nowrap}
   .badge{
     display:inline-flex;align-items:center;
-    background:rgba(127,212,153,.13);color:var(--good);
-    border:1px solid rgba(127,212,153,.35);border-radius:999px;
+    background:var(--good-band);color:var(--good);
+    border:1px solid var(--good);border-radius:999px;
     font-size:10px;letter-spacing:.06em;padding:2px 9px;margin-left:8px;
     font-variant-numeric:tabular-nums;
   }
   svg{display:block;width:100%;height:auto;overflow:visible}
 
   .msg{padding:26px 0;color:var(--mute);font-size:13px;line-height:1.8}
-  .msg b{color:var(--foam);font-weight:600}
+  .msg b{color:var(--text);font-weight:600}
 
   .note{
-    margin-top:22px;padding:12px 15px;border:1px dashed var(--hair);border-radius:10px;
+    margin-top:22px;padding:12px 15px;background:var(--panel);border-radius:10px;
     font-size:11px;line-height:1.85;color:var(--mute);
   }
 
@@ -127,7 +152,7 @@
 /* ------------------------------------------------------------------
    設定
 ------------------------------------------------------------------ */
-const ARC = 45;                  // オフショアと見なす中心角からの許容範囲（度）
+const ARC = 45;                      // オフショア判定：中心角からの許容範囲（度）
 const SPOTS = [
   { id:"torami",  name:"東浪見",       lat:35.365, lon:140.405, off:300 },
   { id:"katakai", name:"片貝新堤",     lat:35.516, lon:140.445, off:300 },
@@ -139,6 +164,7 @@ const SPOTS = [
 ];
 
 const FORECAST_DAYS = 5;
+const VERSION = "v5";                // フッターに表示（差し替え確認用）
 const HOUR_FROM = 3, HOUR_TO = 19;   // 表示する時間帯
 const REC_HEIGHT_RATIO = 0.55;       // おすすめ判定：その日の最大波高に対する比率
 const REC_MIN_HOURS    = 2;          // おすすめ判定：最低継続時間
@@ -183,7 +209,7 @@ async function fetchSpot(spot){
   const q = `latitude=${spot.lat}&longitude=${spot.lon}&timezone=Asia%2FTokyo&forecast_days=${FORECAST_DAYS}`;
   const [sea, air] = await Promise.all([
     grab(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height,wave_period,sea_level_height_msl`),
-    /* wind_speed_unit=ms を必ず付ける（既定は km/h） */
+    /* wind_speed_unit=ms は必須（既定は km/h） */
     grab(`https://api.open-meteo.com/v1/forecast?${q}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms`)
   ]);
   const lvl = sea.hourly.sea_level_height_msl || [];
@@ -249,7 +275,6 @@ async function render(){
 
   const extrema = hasTide ? findExtrema(rows) : new Map();
 
-  /* 表示時間帯で絞り込んでから日別に束ねる */
   const inRange = rows.filter(r => r.t.getHours() >= HOUR_FROM && r.t.getHours() <= HOUR_TO);
   const days = {};
   inRange.forEach(r => (days[r.t.toDateString()] ||= []).push(r));
@@ -273,18 +298,30 @@ async function render(){
     </div>`;
   }
 
-  $("stamp").textContent = "更新 " +
+  $("stamp").textContent = `${VERSION} ・ ${HOUR_FROM}–${HOUR_TO}時 ・ 更新 ` +
     now.toLocaleString("ja-JP", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" });
 }
 
-/* 潮位系列の極大・極小 → Map<通し番号, "満"|"干"> */
+/* 潮位の極大・極小 → Map<通し番号, "満"|"干">
+   同じ値が続く谷／山（プラトー）は中央の1点だけ残す */
 function findExtrema(rows){
-  const m = new Map();
+  const raw = [];
   for (let i = 1; i < rows.length - 1; i++) {
     const a = rows[i - 1].sl, b = rows[i].sl, c = rows[i + 1].sl;
     if (a == null || b == null || c == null) continue;
-    if (b >= a && b >= c && !(a === b && b === c)) m.set(i, "満");
-    if (b <= a && b <= c && !(a === b && b === c)) m.set(i, "干");
+    if (b >= a && b >= c && !(a === b && b === c)) raw.push([i, "満"]);
+    if (b <= a && b <= c && !(a === b && b === c)) raw.push([i, "干"]);
+  }
+  const m = new Map();
+  let k = 0;
+  while (k < raw.length) {
+    let j = k;
+    while (j + 1 < raw.length &&
+           raw[j + 1][0] === raw[j][0] + 1 &&
+           raw[j + 1][1] === raw[j][1]) j++;
+    const mid = raw[Math.floor((k + j) / 2)];
+    m.set(mid[0], mid[1]);
+    k = j + 1;
   }
   return m;
 }
@@ -306,38 +343,37 @@ function findRecommended(day, isOff){
 function dayBlock(day, o){
   const { maxH, maxW, slMin, slMax, isOff, hasTide, extrema } = o;
 
-  /* 共通レイアウト */
-  const W = 720, L = 36, R = 14;
+  const W = 720, L = 40, R = 14;
   const x = i => L + i * (W - L - R) / (day.length - 1 || 1);
 
-  /* ---- 波高 ---- */
-  const HW = 132, top = 16, base = 100;
+  /* ---- 波高（0起点） ---- */
+  const HW = 134, top = 18, base = 100;
   const yW = h => base - (h / maxH) * (base - top);
 
   const rec = findRecommended(day, isOff);
   const line = day.map((r, i) => `${x(i).toFixed(1)},${yW(r.h).toFixed(1)}`).join(" ");
   const area = `${x(0).toFixed(1)},${base} ${line} ${x(day.length - 1).toFixed(1)},${base}`;
 
-  /* 目盛りは軸の外（左）に置いて線と重ならないようにする */
+  /* 目盛りは軸の外（左）。最上段だけ単位を付ける */
   let grid = "", yLabels = "";
   for (let g = 0.5; g <= maxH + 1e-9; g += 0.5) {
-    const yy = yW(g).toFixed(1);
+    const yy = +yW(g).toFixed(1);
+    const topMost = g > maxH - 0.5 + 1e-9;
     grid += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"
-      stroke="var(--hair)" stroke-dasharray="1.5 3.5"/>`;
-    yLabels += `<text x="${L - 7}" y="${(+yy + 3).toFixed(1)}" fill="var(--mute)" font-size="8.5"
-      text-anchor="end" font-variant-numeric="tabular-nums">${g.toFixed(1)}</text>`;
+      stroke="var(--grid)" stroke-dasharray="2 4"/>`;
+    yLabels += `<text x="${L - 8}" y="${(yy + 3.5).toFixed(1)}" fill="var(--mute)" font-size="9.5"
+      text-anchor="end" font-variant-numeric="tabular-nums">${g.toFixed(1)}${topMost ? "m" : ""}</text>`;
   }
 
   const recBand = rec
-    ? `<rect x="${x(rec.start).toFixed(1)}" y="${top - 4}"
-        width="${Math.max(4, x(rec.end) - x(rec.start)).toFixed(1)}" height="${base - top + 4}"
-        fill="var(--good)" opacity=".1" rx="2"/>`
+    ? `<rect x="${x(rec.start).toFixed(1)}" y="${top - 5}"
+        width="${Math.max(4, x(rec.end) - x(rec.start)).toFixed(1)}" height="${base - top + 5}"
+        fill="var(--good-band)" rx="2"/>`
     : "";
 
-  /* 数値ラベルは3時間おきだけ。線の上に十分な余白を取る */
   const valueLabels = day.map((r, i) =>
     r.t.getHours() % 3 ? "" :
-    `<text x="${x(i).toFixed(1)}" y="${(yW(r.h) - 9).toFixed(1)}" fill="var(--foam)"
+    `<text x="${x(i).toFixed(1)}" y="${(yW(r.h) - 9).toFixed(1)}" fill="var(--text)"
        font-size="10.5" text-anchor="middle" font-weight="600"
        font-variant-numeric="tabular-nums">${r.h.toFixed(1)}</text>`
   ).join("");
@@ -355,16 +391,15 @@ function dayBlock(day, o){
     const bh = Math.max(2, (r.ws / maxW) * (barBase - barTop));
     const c = isOff(r.wd) ? "var(--offshore)" : "var(--wind)";
     return `<rect x="${(x(i) - barW / 2).toFixed(1)}" y="${(barBase - bh).toFixed(1)}"
-      width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5" fill="${c}" opacity=".8"/>`;
+      width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5" fill="${c}"/>`;
   }).join("");
 
-  /* 矢印は2時間おき。風が吹いていく向きに回転 */
   const windArrows = day.map((r, i) => {
     if (r.t.getHours() % 2) return "";
     const c = isOff(r.wd) ? "var(--offshore)" : "var(--wind)";
     return `<g transform="translate(${x(i).toFixed(1)},58) rotate(${(r.wd + 180) % 360})">
       <path d="M0,-6.5 L0,6.5 M0,6.5 L-3.4,1.8 M0,6.5 L3.4,1.8"
-        stroke="${c}" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        stroke="${c}" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </g>`;
   }).join("");
 
@@ -392,9 +427,9 @@ function dayBlock(day, o){
           font-variant-numeric="tabular-nums">${kind} ${hhmm(r.t)}</text></g>`;
     }).join("");
     tideSvg = `<svg viewBox="0 0 ${W} ${HT}" role="img" aria-label="潮位">
-      <text x="${L - 7}" y="30" fill="var(--mute)" font-size="8.5" text-anchor="end">潮位</text>
+      <text x="${L - 8}" y="30" fill="var(--mute)" font-size="9" text-anchor="end">潮位</text>
       <polyline points="${pts}" fill="none" stroke="var(--tide)" stroke-width="1.8"
-        stroke-linejoin="round" opacity=".9"/>${marks}
+        stroke-linejoin="round"/>${marks}
     </svg>`;
   }
 
@@ -412,14 +447,14 @@ function dayBlock(day, o){
     </div>
     <svg viewBox="0 0 ${W} ${HW}" role="img" aria-label="波高（m）">
       ${recBand}${grid}${yLabels}
-      <text x="${L - 7}" y="${top - 5}" fill="var(--mute)" font-size="8.5" text-anchor="end">m</text>
-      <polygon points="${area}" fill="var(--swell)" opacity=".13"/>
-      <polyline points="${line}" fill="none" stroke="var(--swell)" stroke-width="2.2"
+      <line x1="${L}" y1="${base}" x2="${W - R}" y2="${base}" stroke="var(--axis)"/>
+      <polygon points="${area}" fill="var(--swell-fill)"/>
+      <polyline points="${line}" fill="none" stroke="var(--swell)" stroke-width="2.4"
         stroke-linejoin="round" stroke-linecap="round"/>
       ${valueLabels}${hourTicks}
     </svg>
     <svg viewBox="0 0 ${W} ${HB}" role="img" aria-label="風速（m/s）と風向">
-      <text x="${L - 7}" y="${barBase}" fill="var(--mute)" font-size="8.5" text-anchor="end">m/s</text>
+      <text x="${L - 8}" y="${barBase}" fill="var(--mute)" font-size="9" text-anchor="end">m/s</text>
       ${windBars}${windArrows}${windValues}
     </svg>
     ${tideSvg}
